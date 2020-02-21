@@ -15,4 +15,5 @@ past 12 years.
 # Analysis:
 
 ![seasonal sales](season.png)
+
 The Analysis contains Analysis and forecast of sales using many models like ARIMA, SARIMA,Holt,Holt Winter's, etc.
