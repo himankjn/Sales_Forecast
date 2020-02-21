@@ -1,0 +1,321 @@
+---
+title: "Tractor Sales Forecasting"
+author: "Himank Jain"
+date: "17/02/2020"
+output: pdf_document
+---
+
+# Buiseness Problem:
+PowerHorse, a tractor and farm equipment manufacturing company, was established a few years after World War II. The company has shown a consistent growth in its revenue from tractor sales since its inception. However, over the years the company has struggled to keep it’s inventory and production cost down because of variability in sales and tractor demand. The management at PowerHorse is under enormous pressure from the shareholders and board to reduce the production cost.
+
+Develop models to forecast next 2 years sales.
+
+# Data:
+
+The dataset consists of 144 observations having the total monthwise sales data of Tractors for a period of past 12 years.
+
+# Loading Required Libraries:
+```{r,warning=FALSE,message=FALSE}
+
+library(data.table)
+library(ggplot2)
+library(fpp2)
+library(forecast)
+library(stats)
+library(tseries)
+```
+
+# Exploratory Analysis:
+```{r}
+sales<-read.csv("Tractor-Sales.csv")
+head(sales)
+# Converting data to timeseries:
+sales_ts=ts(sales[,2],start=c(2003,1),frequency=12)
+sales_ts
+plot(sales_ts,xlab="Years",ylab="Tractor Sales",main="Tractor Sales Data")
+
+```
+# Sesonalty:
+```{r}
+ggseasonplot(sales_ts,year.labels = TRUE,year.labels.left = TRUE)+ylab("Degree")+
+  ggtitle("Season Plot: Tractor Sales")
+ggseasonplot(sales_ts,polar=TRUE  )+ylab("Degree")+
+  ggtitle("Season Plot: Tractor Sales")
+
+```
+July & August seem to be the peek months for sales.
+
+```{r}
+monthplot(sales_ts)
+```
+Irregular components at April 2008 and Feb 2008
+
+# Decomposition:
+
+
+
+
+```{r}
+sales_decompose<-decompose(sales_ts,type='multiplicative')
+sales_decompose
+```
+Decomposition gives the follwing components:
+
+$x: The original data
+
+$seasonal: Sales percentange relative to annual trend. Therefore, In january sales are 18% less than annual trend.
+
+$trend: continuous trend of sales yearly
+
+$random: Peculiarity i.e.  Variation in data having accounted for seasonality & trend.
+
+
+
+```{r}
+plot(sales_decompose)
+```
+
+
+* The trend is generally growing over the years.
+
+* The random error is within 10% of total sales for the years.
+
+* Therefore, If the company has a high budget,we can confidently plan the production to be the forecasted sales +/- 10%.
+
+* If costs are high and company has a low budget, then we can plan the production to be 450 and be confident all tractors are going to be sold. 
+
+
+```{r}
+## additive model on logarithm scale.
+sales_decom_log<-stl(log10(sales_ts),s.window='p')
+plot(sales_decom_log)
+
+```
+
+# Train Test Split:
+```{r}
+ts_train<-window(sales_ts,start=c(2003,1),end=c(2012,12),freq=12)
+ts_test<-window(sales_ts,start=c(2013,1),freq=12)
+```
+
+```{r}
+autoplot(ts_train,,series="Train")+autolayer(ts_test,series="Test")+ggtitle("Tractor sales train & test data")+xlab("Year")+ylab("Sales")+guides(colour=guide_legend("Forecast"))
+```
+
+
+# Forecasting:
+
+## Random Walk with Drift:
+A random walk is defined as a process where the current value of a variable is composed of the past value
+plus an error term defined as a white noise (a normal variable with zero mean and variance one).
+Algebraically a random walk is represented as follows:
+$$y_t = y_{t-1} + \epsilon_t$$
+
+```{r}
+ts_decompose_train_log<-stl(log10(ts_train),s.window='p')
+ts_train_stl<-forecast(ts_decompose_train_log,method='rwdrift',h=24)
+ts_train_stl
+plot(ts_train_stl)
+
+```
+  
+```{r}
+vec2<-10^(cbind(log10(ts_test),as.data.frame(ts_train_stl)[,1]))
+ts.plot(vec2,col=c('blue','red'),main='Tractor sales Actual vs Forecast')
+```
+```{r}
+RMSE<-round(sqrt(sum(((vec2[,1]-vec2[,2])^2)/length(vec2[,1]))),4)
+MAPE<-round(mean(abs(vec2[,1]-vec2[,2])/vec2[,1]),4)
+paste("Accuracy Measures: RMSE: ",RMSE,"and MAPE: ",MAPE)
+```
+Therefore The forecast on average is about 6.87% away from actual sales. 
+Underpredicting by 6.87%
+```{r}
+10^as.data.frame(ts_train_stl)
+```
+Therefore 95% confidence interval : forecast +/- 1.96 * RMSE
+i.e.
+For January 2013 Forecast interval:
+430 +/- 1.96 * 53.56
+
+
+# Exponential Smoothing:
+Exponential smoothing is a popular forecasting method for short-term predictions. Such forecasts of future values are based on past data whereby the most recent observations are weighted more than less recent observations. As part of this weighting, constants are being smoothed. This is different from the simple moving average method, in which every data point has equal weight in the average calculation. Exponential smoothing introduces the idea of building a forecasted value as the average figure from differently weighted data points for the average calculation.
+
+There are different exponential smoothing methods that differ from each other in the components of the time series that are modeled.
+* Single Exponential Smoothing
+* Double Exponential Smoothing
+* Triple Exponential Smoothing
+
+Simple exponential smoothing (SES) uses only one smoothing constant, double exponential smoothing or Holt exponential smoothing uses two smoothing constants and triple exponential smoothing or Holt-Winters exponential smoothing accordingly uses three smoothing constants.
+
+
+
+
+## Single Exponential Smoothing:
+Simple exponential smoothing assumes that the time series data has only a level and some error (or remainder) but no trend or seasonality
+The smoothing parameter $\alpha$ determines the distribution of weights of past observations and with that how heavily a given time period is factored into the forecasted value. If the smoothing parameter is close to 1, recent observations carry more weight and if the smoothing parameter is closer to 0
+$$ F_t=F_{t-1}+ \alpha * (A_{t-1} - F_{t-1})$$
+                or 
+$$ F_t= \alpha * A_{t-1} + (1-\alpha)* F_{t-1}$$
+
+$F_{t-1}$ = forecast for the previous period,
+
+$A_{t-1}$ = Actual demand for the period,
+
+a = weight (between 0 and 1). The closer to zero, the smaller the weight.
+```{r}
+ts_train_ses<-ses(ts_train,hs=24)
+ts_train_ses
+plot(ts_train_ses)
+```
+It can be Observed that all Point forecasts are the same.
+
+## Holt Method (Double Exponential Smoothing):
+Holt exponential smoothing is a time series forecasting approach that fits time series data with an overall level as well as a trend. Additionally, to simple exponential smoothing, which uses smoothing parameter $\alpha$ only there is also a $\beta$ smoothing parameter for the exponential decay of the modeled trend component. This $\beta$ smoothing parameter ranges between 0 and 1, with higher values indicating more weight to recent observations.
+It accounts for level and trend but not seasonality.
+
+$$b_t = \gamma(S_t - S_{t-1}) + (1-\gamma)b_{t-1}$$
+
+```{r}
+ts_train_holt<-holt(ts_train,h=24)
+ts_train_holt
+plot(ts_train_holt)
+```
+
+
+## Holt Winter's Method (triple exponential model):
+Holt-Winters exponential smoothing is a time series forecasting approach that takes the overall level, trend and seasonality of the underlying dataset into account for its forecast. Hence, the Holt-Winters model has three smoothing parameters indicating the exponential decay from most recent to older observations: $\alpha$ for the level component, $\beta$ for the trend component, and $\gamma$ or the seasonality component.
+It accounts for level and trend and seasonality.
+
+level: $$L_t= \alpha*(y_t-S_{t-s}) + (1-\alpha)(L_{t-1}+b_{t-1}) $$
+trend: $$b_t= \beta*(L_t-L_{t-1}) + (1-\beta)* b_{t-1})$$
+seasonal: $$S_t= \gamma(y_t-L_t) + (1-\gamma)S_{t-s}$$
+forecast: $$ F_{t+k} = L_t + k*b_t + S_{t+k-s}$$
+
+```{r}
+ts_train_hw<-hw(ts_train,h=24,seasonal="multiplicative")
+ts_train_hw
+plot(ts_train_hw)
+```
+Accuracy of Holt Winter's method:
+```{r}
+vec<-cbind(ts_test,as.data.frame(ts_train_hw)[,1])
+ts.plot(vec,col=c("blue","red"),main="Tractor Sales: Actual vs Forecast")
+```
+Underprediction!
+This means the trend seems to be increasing faster than what historical data is suggesting.
+```{r}
+RMSE<-round(sqrt(sum(((vec[,1]-vec[,2])^2)/length(vec[,1]))),4)
+MAPE<-round(mean(abs(vec[,1]-vec[,2])/vec[,1]),4)
+paste("Accuracy Measures: RMSE: ",RMSE,"and MAPE: ",MAPE)
+```
+In analytics perspective, RMSE tracks variance while MAPE tracks bias.
+
+Comparing rwdrift model to hold winter model, we observe that rwdrift model has less bias but high variance
+while holt winter model has less variance and high bias.
+
+# Stationarity:
+Original data:
+```{r}
+plot(sales_ts, xlab='Years', ylab = 'Tractor Sales')
+```
+Checking Stationarity using Augmented Dickey–Fuller test:
+```{r}
+adf.test(sales_ts)
+```
+Therefore Data is not stationary. Let's make it stationary for ARIMA modelling.
+
+## Trend Removal:
+Removing the upward trend through 1st order differencing.
+```{r}
+plot(diff(sales_ts),ylab='Differenced Tractor Sales')
+```
+## Log transform data to make data stationary on variance
+Now, the above series is not stationary on variance i.e. variation in the plot is increasing as we move towards the right of the chart. We need to make the series stationary on variance to produce reliable forecasts through ARIMA models.
+```{r}
+plot(log10(sales_ts),ylab='Log (Tractor Sales)')
+```
+## Difference log transform data to make data stationary on both mean and variance:
+```{r}
+plot(diff(log10(sales_ts)),ylab='Differenced Log (Tractor Sales)')
+```
+Now, The time series looks stationary.
+The Integrated part (I) of ARIMA model will be equal to 1 as we used 1st order difference to make series stationary.
+
+# ACF & PACF:
+Plot ACF(Autocorrelation factor) and PACF(Partial Autocorrelation factor) to identify potential AR and MA components in the residuals.
+```{r}
+par(mfrow=c(1,2))
+acf(ts(diff(log10(sales_ts))),main='ACF Tractor Sales')
+pacf(ts(diff(log10(sales_ts))),main='PACF Tractor Sales')
+```
+There are spikes beyond significant zones. Therefore residuals are not random.
+Hence AR MA models can be used to extract this information.
+
+## ARIMA:
+Testing arima model on ts_test data:
+```{r}
+
+ARIMAfit = auto.arima(log10(ts_train), approximation=FALSE,trace=FALSE)
+summary(ARIMAfit)
+pred<-forecast(ARIMAfit,h=24)
+vec<-10^cbind(log10(ts_test),as.data.frame(pred)[,1])
+vec
+ts.plot(vec,col=c("blue","red"),main="Tractor Sales: Actual vs Forecast")
+
+```
+```{r}
+RMSE<-round(sqrt(sum(((vec[,1]-vec[,2])^2)/length(vec[,1]))),4)
+MAPE<-round(mean(abs(vec[,1]-vec[,2])/vec[,1]),4)
+paste("Accuracy Measures: RMSE: ",RMSE,"and MAPE: ",MAPE)
+```
+
+
+## Using arima to forecast values of 2015, 2016 & 2017
+
+```{r}
+ARIMAfit = auto.arima(log10(sales_ts), approximation=FALSE,trace=FALSE)
+summary(ARIMAfit)
+
+```
+
+Forecasting:
+```{r}
+par(mfrow = c(1,1))
+pred = predict(ARIMAfit, n.ahead = 36) #36 months makes 3 years
+pred
+```
+```{r}
+plot(sales_ts,type='l',xlim=c(2004,2018),ylim=c(1,1600),xlab = 'Year',ylab = 'Tractor Sales')
+lines(10^(pred$pred),col='blue')
+lines(10^(pred$pred+2*pred$se),col='orange')
+lines(10^(pred$pred-2*pred$se),col='orange')
+```
+The above is the output with forecasted values of tractor sales in blue. Also, the range of expected error (i.e. 2 times standard deviation) is displayed with orange lines on either side of predicted blue line.
+
+Assumptions while forecasting: Forecasts for a long period of 3 years is an ambitious task. The major assumption here is that the underlining patterns in the time series will continue to stay the same as predicted in the model. A short-term forecasting model, say a couple of business quarters or a year, is usually a good idea to forecast with reasonable accuracy. A long-term model like the one above needs to evaluated on a regular interval of time (say 6 months). The idea is to incorporate the new information available with the passage of time in the model.
+
+
+## Plot ACF and PACF for residuals of ARIMA model to ensure no more information is left for extraction:
+```{r}
+par(mfrow=c(1,2))
+acf(ts(ARIMAfit$residuals),main='ACF Residual')
+pacf(ts(ARIMAfit$residuals),main='PACF Residual')
+```
+
+Since there are no spikes outside the insignificant zone for both ACF and PACF plots we can conclude that residuals are random with no information or juice in them. Hence our ARIMA model is working good and predictions were successfully made.
+
+# Inference:
+
+* Tractor sales seem to have both seasonality and trend.
+
+* The sales are on average more during the months of July and August compared to other months by about 23% of annual trend.
+  
+* If the company has a high budget,we can confidently plan the production to be the forecasted sales +/- 10%.
+* If costs are high and company has a low budget, then we can plan the production to be 450 and be confident all tractors are going to be sold. 
+
+* Furthermore, a cost matrix and cost curve can be used to minimize the costs considering both cases.
+
+
+
