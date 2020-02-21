@@ -16,4 +16,4 @@ past 12 years.
 
 ![seasonal sales](season.png)
 
-The Analysis contains Analysis and forecast of sales using many models like ARIMA, SARIMA,Holt,Holt Winter's, etc.
+The Files contains Analysis and forecast of sales using many models like ARIMA, SARIMA,Holt,Holt Winter's, etc. in Python and R using almost an identical approach
