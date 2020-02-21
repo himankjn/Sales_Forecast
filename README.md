@@ -12,4 +12,7 @@ the shareholders and board to reduce the production cost.
 The dataset consists of 144 observations having the total monthwise sales data of Tractors for a period of
 past 12 years.
 
+# Analysis:
+
+![seasonal sales](season.png)
 The Analysis contains Analysis and forecast of sales using many models like ARIMA, SARIMA,Holt,Holt Winter's, etc.
